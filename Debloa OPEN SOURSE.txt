@@ -1,4 +1,4 @@
-<#
+ <#
 .SYNOPSIS
     Ultimate Windows Optimizer Pro v6.0 - Enhanced Console Edition
     Professional-grade Windows optimization with zero risk
@@ -230,20 +230,74 @@ function Get-SystemInformation {
             }
         }
         
-        # Windows Features
+        # Windows Features - FIXED SYNTAX
+        $gameModeValue = $false
+        $gameDVRValue = $false
+        $hardwareGPUValue = $false
+        $windowsHelloValue = $false
+        $bitLockerValue = "Unknown"
+        
+        try {
+            $gameModeProp = Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\GameBar" -Name "AllowAutoGameMode" -ErrorAction SilentlyContinue
+            $gameModeValue = $gameModeProp.AllowAutoGameMode -eq 1
+        } catch { $gameModeValue = $false }
+        
+        try {
+            $gameDVRProp = Get-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -ErrorAction SilentlyContinue
+            $gameDVRValue = $gameDVRProp.GameDVR_Enabled -eq 1
+        } catch { $gameDVRValue = $false }
+        
+        try {
+            $hardwareGPUProp = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -ErrorAction SilentlyContinue
+            $hardwareGPUValue = $hardwareGPUProp.HwSchMode -eq 2
+        } catch { $hardwareGPUValue = $false }
+        
+        try {
+            $windowsHelloValue = (Get-WindowsHelloContainer -ErrorAction SilentlyContinue) -ne $null
+        } catch { $windowsHelloValue = $false }
+        
+        try {
+            $bitLockerValue = (Get-BitLockerVolume -MountPoint "C:" -ErrorAction SilentlyContinue).ProtectionStatus
+        } catch { $bitLockerValue = "Unknown" }
+        
         $systemInfo.WindowsFeatures = @{
-            GameMode = try { (Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\GameBar" -Name "AllowAutoGameMode" -ErrorAction SilentlyContinue).AllowAutoGameMode -eq 1 } catch { $false }
-            GameDVR = try { (Get-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -ErrorAction SilentlyContinue).GameDVR_Enabled -eq 1 } catch { $false }
-            HardwareGPU = try { (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -ErrorAction SilentlyContinue).HwSchMode -eq 2 } catch { $false }
-            WindowsHello = try { (Get-WindowsHelloContainer -ErrorAction SilentlyContinue) -ne $null } catch { $false }
-            BitLocker = try { (Get-BitLockerVolume -MountPoint "C:" -ErrorAction SilentlyContinue).ProtectionStatus } catch { "Unknown" }
+            GameMode = $gameModeValue
+            GameDVR = $gameDVRValue
+            HardwareGPU = $hardwareGPUValue
+            WindowsHello = $windowsHelloValue
+            BitLocker = $bitLockerValue
         }
         
         # Performance Metrics
+        $cpuLoad = 0
+        $ramUsage = 0
+        $diskQueue = 0
+        
+        try {
+            $cpuCounter = Get-Counter "\Processor(_Total)\% Processor Time" -SampleInterval 1 -MaxSamples 3 -ErrorAction SilentlyContinue
+            if ($cpuCounter) {
+                $cpuLoad = $cpuCounter.CounterSamples.CookedValue | Measure-Object -Average | Select-Object -ExpandProperty Average
+            }
+        } catch { $cpuLoad = 0 }
+        
+        try {
+            $ramCounter = Get-Counter "\Memory\Available MBytes" -SampleInterval 1 -MaxSamples 3 -ErrorAction SilentlyContinue
+            if ($ramCounter) {
+                $ramUsage = $ramCounter.CounterSamples.CookedValue | Measure-Object -Average | Select-Object -ExpandProperty Average
+            }
+        } catch { $ramUsage = 0 }
+        
+        try {
+            $diskCounter = Get-Counter "\PhysicalDisk(_Total)\Current Disk Queue Length" -SampleInterval 1 -MaxSamples 3 -ErrorAction SilentlyContinue
+            if ($diskCounter) {
+                $diskQueue = $diskCounter.CounterSamples.CookedValue | Measure-Object -Average | Select-Object -ExpandProperty Average
+            }
+        } catch { $diskQueue = 0 }
+        
         $systemInfo.Performance = @{
-            CPULoad = (Get-Counter "\Processor(_Total)\% Processor Time" -SampleInterval 1 -MaxSamples 3 -ErrorAction SilentlyContinue).CounterSamples.CookedValue | Measure-Object -Average | Select-Object -ExpandProperty Average
-            RAMUsage = (Get-Counter "\Memory\Available MBytes" -SampleInterval 1 -MaxSamples 3 -ErrorAction SilentlyContinue).CounterSamples.CookedValue | Measure-Object -Average | Select-Object -ExpandProperty Average
-            DiskQueue = (Get-Counter "\PhysicalDisk(_Total)\Current Disk Queue Length" -SampleInterval 1 -MaxSamples 3 -ErrorAction SilentlyContinue).CounterSamples.CookedValue | Measure-Object -Average | Select-Object -ExpandProperty Average
+            CPULoad = $cpuLoad
+            RAMUsage = $ramUsage
+            DiskQueue = $diskQueue
         }
         
         Write-Success "System analysis complete"
@@ -269,7 +323,9 @@ function Show-SystemReport {
     Write-Host "  Name: $($SystemInfo.OS.Name)" -ForegroundColor $global:Colors.Info
     Write-Host "  Version: $($SystemInfo.OS.Version) (Build $($SystemInfo.OS.Build))" -ForegroundColor $global:Colors.Info
     Write-Host "  Architecture: $($SystemInfo.OS.Architecture)" -ForegroundColor $global:Colors.Info
-    Write-Host "  Last Boot: $($SystemInfo.OS.LastBoot)" -ForegroundColor $global:Colors.Info
+    if ($SystemInfo.OS.LastBoot) {
+        Write-Host "  Last Boot: $($SystemInfo.OS.LastBoot)" -ForegroundColor $global:Colors.Info
+    }
     Write-Host ""
     
     Write-Host "PROCESSOR:" -ForegroundColor $global:Colors.Highlight
